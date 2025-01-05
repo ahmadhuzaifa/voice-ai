@@ -35,3 +35,9 @@ export interface TTSRequest {
   /** Optional counter for tracking conversation turns */
   interactionCount?: number;
 }
+
+export enum TTSProviders {
+  ELEVENLABS = "elevenlabs",
+  PLAYHT = "playht",
+  DEEPGRAM = "deepgram",
+}

@@ -53,3 +53,8 @@ export interface TranscriptionResult {
   /** Duration of the transcription */
   duration?: number;
 }
+
+
+export enum STTProviders {
+  DEEPGRAM = "deepgram",
+}
