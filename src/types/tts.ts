@@ -1,3 +1,5 @@
+import { Readable } from "stream";
+
 export interface TTSConfig {
   /** API key for the TTS provider */
   apiKey: string;
@@ -36,8 +38,16 @@ export interface TTSRequest {
   interactionCount?: number;
 }
 
+export interface TTSStreamResponse {
+  /** Stream of audio data */
+  stream: Readable;
+  /** Cleanup function to stop the stream */
+  cleanup: () => void;
+}
+
 export enum TTSProviders {
   ELEVENLABS = "elevenlabs",
   PLAYHT = "playht",
   DEEPGRAM = "deepgram",
 }
+

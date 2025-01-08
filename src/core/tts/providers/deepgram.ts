@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import { TTSProvider } from '../tts.interface';
-import { TTSRequest, TTSResponse, TTSConfig } from '@/types/tts';
+import { TTSRequest, TTSResponse, TTSConfig, TTSStreamResponse } from '@/types/tts';
 import { TTSEvents } from '@/constants/TTSEvents';
+import { Readable } from 'stream';
 
 export interface DeepgramTTSConfig extends TTSConfig {
   /** API Key for Deepgram */
@@ -86,7 +87,7 @@ export class DeepgramTTS extends EventEmitter implements TTSProvider {
     }
   }
 
-  async* generateStream(request: TTSRequest): AsyncIterator<TTSResponse> {
+  async generateStream(request: TTSRequest): Promise<TTSStreamResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/stream`, {
         method: 'POST',
@@ -110,31 +111,71 @@ export class DeepgramTTS extends EventEmitter implements TTSProvider {
 
       const reader = response.body.getReader();
       let chunkIndex = 0;
+      let isDestroyed = false;
+      const self = this;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) break;
+      const stream = new Readable({
+        async read() {
+          const processChunk = async () => {
+            if (isDestroyed) {
+              this.push(null);
+              return;
+            }
 
-        const chunk: TTSResponse = {
-          audioData: Buffer.from(value),
-          metadata: {
-            text: request.text,
-            format: 'audio/webm', // Streaming uses WebM format
-            responseIndex: chunkIndex,
-          },
-        };
+            try {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                this.push(null);
+                return;
+              }
 
-        this.emit(TTSEvents.SPEECH,
-          chunkIndex,
-          chunk.audioData.toString('base64'),
-          request.text,
-          request.interactionCount
-        );
+              const chunk: TTSResponse = {
+                audioData: Buffer.from(value),
+                metadata: {
+                  text: request.text,
+                  format: 'audio/webm',
+                  responseIndex: chunkIndex,
+                },
+              };
 
-        yield chunk;
-        chunkIndex++;
-      }
+              self.emit(TTSEvents.SPEECH,
+                chunkIndex,
+                chunk.audioData.toString('base64'),
+                request.text,
+                request.interactionCount
+              );
+
+              this.push(chunk.audioData);
+              chunkIndex++;
+            } catch (error) {
+              self.emit(TTSEvents.ERROR, error);
+              this.destroy(error instanceof Error ? error : new Error(String(error)));
+            }
+          };
+
+          processChunk().catch((error) => {
+            self.emit(TTSEvents.ERROR, error);
+            this.destroy(error instanceof Error ? error : new Error(String(error)));
+          });
+        }
+      });
+
+      const cleanup = () => {
+        isDestroyed = true;
+        reader.cancel().catch(console.error);
+        stream.destroy();
+      };
+
+      // Handle stream completion
+      stream.on('end', cleanup);
+      stream.on('error', cleanup);
+
+      return {
+        stream,
+        cleanup
+      };
+
     } catch (error) {
       this.emit(TTSEvents.ERROR, error as Error);
       throw error;

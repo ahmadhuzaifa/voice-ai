@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { TTSRequest, TTSResponse } from '@/types/tts';
+import { TTSRequest, TTSResponse, TTSStreamResponse } from '@/types/tts';
 import { TTSEvents } from '@/constants/TTSEvents';
 
 /**
@@ -27,7 +27,7 @@ export interface TTSProvider extends EventEmitter {
    * @returns AsyncIterator of audio chunks and metadata
    * @throws {TTSError} If speech generation fails
    */
-  generateStream?(request: TTSRequest): AsyncIterator<TTSResponse>;
+  generateStream?(request: TTSRequest): Promise<TTSStreamResponse>;
 
   on(event: typeof TTSEvents.SPEECH, 
      listener: (

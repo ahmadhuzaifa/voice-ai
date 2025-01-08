@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import { TTSProvider } from '../tts.interface';
-import { TTSRequest, TTSResponse, TTSConfig } from '@/types/tts';
+import { TTSRequest, TTSResponse, TTSConfig, TTSStreamResponse } from '@/types/tts';
 import { TTSEvents } from '@/constants/TTSEvents';
+import { Readable } from 'stream';
 
 export interface ElevenLabsConfig extends TTSConfig {
   /** Voice ID for ElevenLabs */
@@ -74,7 +75,6 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
         },
       };
 
-      // Emit the speech event
       this.emit(TTSEvents.SPEECH, 
         request.responseIndex ?? 0,
         audioData.toString('base64'),
@@ -89,7 +89,7 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
     }
   }
 
-  async* generateStream(request: TTSRequest): AsyncIterator<TTSResponse> {
+  async generateStream(request: TTSRequest): Promise<TTSStreamResponse> {
     try {
       const response = await fetch(
         `${this.baseUrl}/text-to-speech/${this.voiceId}/stream`,
@@ -116,31 +116,64 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
 
       const reader = response.body.getReader();
       let chunkIndex = 0;
+      let isDestroyed = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) break;
+      const stream = new Readable({
+				  async read(): Promise<void> {
+          try {
+            if (isDestroyed) {
+              this.push(null);
+              return;
+            }
 
-        const chunk: TTSResponse = {
-          audioData: Buffer.from(value),
-          metadata: {
-            text: request.text,
-            format: 'audio/mpeg',
-            responseIndex: chunkIndex,
-          },
-        };
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              this.push(null);
+              return;
+            }
 
-        this.emit(TTSEvents.SPEECH, 
-          chunkIndex,
-          chunk.audioData.toString('base64'),
-          request.text,
-          request.interactionCount
-        );
+            const chunk: TTSResponse = {
+              audioData: Buffer.from(value),
+              metadata: {
+                text: request.text,
+                format: 'audio/mpeg',
+                responseIndex: chunkIndex,
+              },
+            };
 
-        yield chunk;
-        chunkIndex++;
-      }
+            this.emit(TTSEvents.SPEECH, 
+              chunkIndex,
+              chunk.audioData.toString('base64'),
+              request.text,
+              request.interactionCount
+            );
+
+            this.push(chunk.audioData);
+            chunkIndex++;
+          } catch (error) {
+            this.emit(TTSEvents.ERROR, error);
+            this.destroy(error instanceof Error ? error : new Error(String(error)));
+          }
+        }
+      });
+
+      // Setup cleanup function
+      const cleanup = () => {
+        isDestroyed = true;
+        reader.cancel().catch(console.error);
+        stream.destroy();
+      };
+
+      // Handle stream completion
+      stream.on('end', cleanup);
+      stream.on('error', cleanup);
+
+      return {
+        stream,
+        cleanup
+      };
+
     } catch (error) {
       this.emit(TTSEvents.ERROR, error as Error);
       throw error;
