@@ -156,6 +156,7 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
     try {
       const url = new URL(`${this.baseUrl}/text-to-speech/${this.voiceId}/stream`);
       url.searchParams.append('output_format', this.determineOutputFormat());
+      url.searchParams.append('optimize_streaming_latency', '3');
 
       const response = await fetch(url, {
         method: 'POST',

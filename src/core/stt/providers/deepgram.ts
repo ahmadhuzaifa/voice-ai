@@ -1,19 +1,16 @@
 import { EventEmitter } from 'events';
-import { createClient, LiveSchema, LiveTranscriptionEvents } from '@deepgram/sdk';
+import { createClient, ListenLiveClient, LiveTranscriptionEvent, LiveSchema, LiveTranscriptionEvents, UtteranceEndEvent, SpeechStartedEvent } from '@deepgram/sdk';
 import { Buffer } from 'node:buffer';
 import { STTProvider } from '@/core/stt/stt.interface';
-import { STTConfig, TranscriptionResult, TranscriptionOptions } from '@/types/stt';
+import { SpeechStartedResult, STTConfig, TranscriptionOptions, TranscriptionResult, UtteranceEndResult } from '@/types/stt';
 import { STTEvents } from '@/constants/STTEvents';
 
 export interface DeepgramSTTConfig extends STTConfig {
-  /** Model to use for transcription */
   model?: string;
 }
 
 export class DeepgramSTT extends EventEmitter implements STTProvider {
-  private dgConnection: any;
-  private finalResult: string = '';
-  private speechFinal: boolean = false;
+  private dgConnection: ListenLiveClient;
 
   constructor(config: DeepgramSTTConfig, options: TranscriptionOptions) {
     super();
@@ -29,99 +26,67 @@ export class DeepgramSTT extends EventEmitter implements STTProvider {
       utterance_end_ms: options.utteranceEndMs ?? 1000
     };
 
-    // Initialize Deepgram connection
     this.dgConnection = deepgram.listen.live(dgOptions);
 
-    // Set up event handlers
     this.dgConnection.on(LiveTranscriptionEvents.Open, () => {
-      // Emit open event
       this.emit(STTEvents.OPEN);
 
-      // Handle transcripts
-      this.dgConnection.on(LiveTranscriptionEvents.Transcript, (transcriptionEvent: any) => {
-        const alternatives = transcriptionEvent.channel?.alternatives;
-        let text = '';
-        if (alternatives) {
-          text = alternatives[0]?.transcript;
-        }
+      this.dgConnection.on(LiveTranscriptionEvents.Transcript, (event: LiveTranscriptionEvent) => {
+        if (event.type === 'Results' && event.channel?.alternatives?.length > 0) {
+          const alternative = event.channel.alternatives[0];
 
-        // Handle UtteranceEnd events
-        if (transcriptionEvent.type === 'UtteranceEnd') {
-          if (!this.speechFinal) {
-            const result: TranscriptionResult = {
-              text: this.finalResult.trim(),
-              isFinal: true,
-              speechFinal: true
-            };
-            this.emit(STTEvents.TRANSCRIPTION, result);
-            return;
+          const transcription: TranscriptionResult = {
+            text: alternative.transcript.trim(),
+            isFinal: event.is_final ?? false,
+            speechFinal: event.speech_final ?? false,
+            confidence: alternative.confidence,
+            start: event.start,
+            duration: event.duration,
+            words: alternative.words,
           }
-          return;
-        }
-
-        // Handle regular transcription results
-        if (transcriptionEvent.is_final === true && text.trim().length > 0) {
-          this.finalResult += ` ${text}`;
-
-          if (transcriptionEvent.speech_final === true) {
-            this.speechFinal = true;
-            const result: TranscriptionResult = {
-              text: this.finalResult.trim(),
-              isFinal: true,
-              speechFinal: true,
-              confidence: alternatives?.[0]?.confidence
-            };
-            this.emit(STTEvents.TRANSCRIPTION, result);
-            this.finalResult = '';
-          } else {
-            this.speechFinal = false;
-          }
-        } else {
-          // Emit interim results
-          this.emit(STTEvents.UTTERANCE, text);
+          
+          this.emit(STTEvents.TRANSCRIPTION, transcription);
         }
       });
 
-      // Handle errors
+      this.dgConnection.on(LiveTranscriptionEvents.UtteranceEnd, (event: UtteranceEndEvent) => {
+        const utteranceEnd: UtteranceEndResult = {
+          last_word_end: event.last_word_end,
+          channel: event.channel
+        }
+        this.emit(STTEvents.UTTERANCE_END, utteranceEnd);
+      });
+
+      this.dgConnection.on(LiveTranscriptionEvents.SpeechStarted, (event: SpeechStartedEvent) => {
+        const speechStarted: SpeechStartedResult = {
+          channel: event.channel
+        }
+        this.emit(STTEvents.SPEECH_STARTED, speechStarted);
+      });
+
       this.dgConnection.on(LiveTranscriptionEvents.Error, (error: Error) => {
         this.emit(STTEvents.ERROR, error);
       });
 
-      this.dgConnection.on(LiveTranscriptionEvents.Metadata, (metadata: any) => {
-        this.emit(STTEvents.METADATA, metadata);
-      });
-
-      // Handle connection close
       this.dgConnection.on(LiveTranscriptionEvents.Close, () => {
         this.emit(STTEvents.CLOSE);
       });
     });
   }
 
-  /**
-   * Send audio data to Deepgram
-   * @param payload Base64 encoded audio data
-   */
   send(payload: string): void {
     if (this.getReadyState() === 1) {
       this.dgConnection.send(Buffer.from(payload, 'base64'));
     }
   }
 
-  /**
-   * Get the current connection state
-   * @returns Connection ready state (0: Connecting, 1: Open, 2: Closing, 3: Closed)
-   */
   getReadyState(): number {
     return this.dgConnection?.getReadyState() ?? 3;
   }
 
-  /**
-   * Close the Deepgram connection
-   */
   close(): void {
     if (this.dgConnection) {
-      this.dgConnection.close();
+      this.dgConnection.disconnect();
     }
   }
 }

@@ -37,6 +37,16 @@ export interface TranscriptionOptions {
 }
 
 /**
+ * Word in the transcription
+ */
+export interface Word {
+  /** Word */
+  word: string;
+  /** Start time of the word */
+  start: number;
+}
+
+/**
  * Transcription result containing the transcribed text and metadata
  */
 export interface TranscriptionResult {
@@ -52,8 +62,22 @@ export interface TranscriptionResult {
   start?: number;
   /** Duration of the transcription */
   duration?: number;
+  /** Words in the transcription */
+  words?: Word[];
 }
 
+
+export interface UtteranceEndResult {
+  /** Last word end time */
+  last_word_end: number;
+  /** Channel */
+  channel: number[];
+}
+
+export interface SpeechStartedResult {
+  /** Channel */
+  channel: number[];
+}
 
 export enum STTProviders {
   DEEPGRAM = "deepgram",

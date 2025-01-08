@@ -1,6 +1,16 @@
 import { STTEvents } from "@/constants/STTEvents";
-import { TranscriptionResult } from "@/types/stt";
+import { SpeechStartedResult, TranscriptionResult, UtteranceEndResult } from "@/types/stt";
 import { EventEmitter } from "events";
+
+export interface STTEventMap {
+  [STTEvents.TRANSCRIPTION]: TranscriptionResult;
+  [STTEvents.ERROR]: Error;
+  [STTEvents.WARNING]: string;
+  [STTEvents.OPEN]: void;
+  [STTEvents.CLOSE]: void;
+  [STTEvents.UTTERANCE_END]: UtteranceEndResult;
+  [STTEvents.SPEECH_STARTED]: SpeechStartedResult;
+}
 
 /**
  * Interface for Speech-to-Text providers
@@ -24,36 +34,37 @@ export interface STTProvider extends EventEmitter {
      */
     close(): void;
   
+    /**
+     * Emit an event with a payload
+     * @param event - The event to emit
+     * @param payload - The payload to emit
+     * @returns Whether the event was emitted successfully
+     */   
+    emit<K extends keyof STTEventMap>(event: K, payload: STTEventMap[K]): boolean;
 
     /**
-     * Event listener for transcription events
+     * Add an event listener
+     * @param event - The event to listen for
+     * @param listener - The listener to add
+     * @returns The event emitter
      */
-    on(event: STTEvents.TRANSCRIPTION, listener: (result: TranscriptionResult) => void): this;
+    on<K extends keyof STTEventMap>(event: K, listener: (payload: STTEventMap[K]) => void): this; 
 
     /**
-     * Event listener for utterance events
+     * Add a one-time event listener
+     * @param event - The event to listen for
+     * @param listener - The listener to add
+     * @returns The event emitter
      */
-    on(event: STTEvents.UTTERANCE, listener: (text: string) => void): this;
+    once<K extends keyof STTEventMap>(event: K, listener: (payload: STTEventMap[K]) => void): this;
 
     /**
-     * Event listener for error events
+     * Remove an event listener
+     * @param event - The event to remove
+     * @param listener - The listener to remove
+     * @returns The event emitter
      */
-    on(event: STTEvents.ERROR, listener: (error: Error) => void): this;
-
-    /**
-     * Event listener for warning events
-     */
-    on(event: STTEvents.WARNING, listener: (warning: string) => void): this;
-
-    /**
-     * Event listener for metadata events
-     */
-    on(event: STTEvents.OPEN, listener: () => void): this;
-
-    /**
-     * Event listener for close events
-     */
-    on(event: STTEvents.CLOSE, listener: () => void): this;
+    off<K extends keyof STTEventMap>(event: K, listener: (payload: STTEventMap[K]) => void): this;
   }
   
   

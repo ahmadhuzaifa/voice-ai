@@ -5,8 +5,10 @@
 export enum STTEvents {
     /** Emitted when a final transcription is ready */
     TRANSCRIPTION = 'transcription',
-    /** Emitted for interim/partial transcription results */
-    UTTERANCE = 'utterance',
+    /** Emitted when an utterance ends */
+    UTTERANCE_END = 'utterance_end',
+    /** Emitted when a speech started */
+    SPEECH_STARTED = 'speech_started',
     /** Emitted when an error occurs */
     ERROR = 'error',
     /** Emitted when a warning occurs */
