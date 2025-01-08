@@ -133,23 +133,8 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
               return;
             }
 
-            const chunk: TTSResponse = {
-              audioData: Buffer.from(value),
-              metadata: {
-                text: request.text,
-                format: 'audio/mpeg',
-                responseIndex: chunkIndex,
-              },
-            };
-
-            this.emit(TTSEvents.SPEECH, 
-              chunkIndex,
-              chunk.audioData.toString('base64'),
-              request.text,
-              request.interactionCount
-            );
-
-            this.push(chunk.audioData);
+           
+            this.push(Buffer.from(value));
             chunkIndex++;
           } catch (error) {
             this.emit(TTSEvents.ERROR, error);
@@ -158,14 +143,12 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
         }
       });
 
-      // Setup cleanup function
       const cleanup = () => {
         isDestroyed = true;
         reader.cancel().catch(console.error);
         stream.destroy();
       };
 
-      // Handle stream completion
       stream.on('end', cleanup);
       stream.on('error', cleanup);
 

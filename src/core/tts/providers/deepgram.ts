@@ -130,23 +130,7 @@ export class DeepgramTTS extends EventEmitter implements TTSProvider {
                 return;
               }
 
-              const chunk: TTSResponse = {
-                audioData: Buffer.from(value),
-                metadata: {
-                  text: request.text,
-                  format: 'audio/webm',
-                  responseIndex: chunkIndex,
-                },
-              };
-
-              self.emit(TTSEvents.SPEECH,
-                chunkIndex,
-                chunk.audioData.toString('base64'),
-                request.text,
-                request.interactionCount
-              );
-
-              this.push(chunk.audioData);
+              this.push(Buffer.from(value));
               chunkIndex++;
             } catch (error) {
               self.emit(TTSEvents.ERROR, error);
