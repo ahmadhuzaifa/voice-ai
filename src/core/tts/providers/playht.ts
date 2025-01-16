@@ -11,9 +11,9 @@ export interface PlayHTConfig extends TTSConfig {
   userId: string;
   /** Voice ID for PlayHT */
   voiceId: string;
-  /** Optional quality setting (draft or premium) */
-  quality?: 'draft' | 'premium';
-  /** Optional voice speed (0.5 to 2.0) */
+  /** Optional quality setting */
+  quality?: 'draft' | 'low' | 'medium' | 'high' | 'premium';
+  /** Optional voice speed (0.1 to 5.0) */
   speed?: number;
 }
 
@@ -29,7 +29,7 @@ interface PlayHTConversionResponse {
 export class PlayHTTTS extends EventEmitter implements TTSProvider {
   private readonly apiKey: string;
   private readonly userId: string;
-  private readonly baseUrl = 'https://api.play.ht/api/v2';
+  private readonly baseUrl = 'https://api.play.ai/api/v1';
   private readonly voiceId: string;
   private readonly quality: string;
   private readonly speed: number;
@@ -41,38 +41,60 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
       throw new Error('PlayHT API key and User ID are required');
     }
 
+    if (!config.voiceId) {
+      throw new Error('Voice ID is required');
+    }
+
     this.apiKey = config.apiKey;
     this.userId = config.userId;
     this.voiceId = config.voiceId;
     this.quality = config.quality ?? 'premium';
     this.speed = config.speed ?? 1.0;
+
+    // Validate speed range
+    if (this.speed < 0.1 || this.speed > 5.0) {
+      throw new Error('Speed must be between 0.1 and 5.0');
+    }
   }
 
   async generate(request: TTSRequest): Promise<TTSResponse> {
     try {
+      if (!request.text) {
+        throw new Error('Text is required for TTS generation');
+      }
+
       // Step 1: Create conversion request
       const conversionResponse = await fetch(
         `${this.baseUrl}/tts`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'X-User-ID': this.userId,
+            'AUTHORIZATION': this.apiKey,
+            'X-USER-ID': this.userId,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
+            model: 'Play3.0-mini',
             text: request.text,
             voice: this.voiceId,
             quality: this.quality,
             speed: this.speed,
-            output_format: 'mp3'
+            outputFormat: 'mp3',
+            sampleRate: 24000,
+            textGuidance: 1,
+            language: 'english'
           }),
         }
       );
 
       if (!conversionResponse.ok) {
-        const error = await conversionResponse.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(`PlayHT API error: ${error || conversionResponse.statusText}`);
+        const errorBody = await conversionResponse.text();
+        console.error('PlayHT API Error:', {
+          status: conversionResponse.status,
+          statusText: conversionResponse.statusText,
+          body: errorBody
+        });
+        throw new Error(`PlayHT API error: ${errorBody || conversionResponse.statusText}`);
       }
 
       const { id: transcriptionId } = await conversionResponse.json() as PlayHTConversionResponse;
@@ -107,6 +129,10 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
 
       return result;
     } catch (error) {
+      console.error('PlayHT Generate Error:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       this.emit(TTSEvents.ERROR, error as Error);
       throw error;
     }
@@ -114,27 +140,63 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
 
   async generateStream(request: TTSRequest): Promise<TTSStreamResponse> {
     try {
+      if (!request.text) {
+        throw new Error('Text is required for TTS generation');
+      }
+
+      console.log('PlayHT Request:', {
+        model: 'Play3.0-mini',
+        text: request.text,
+        voice: this.voiceId,
+        quality: this.quality,
+        speed: this.speed,
+        outputFormat: 'mp3',
+        sampleRate: 24000,
+        textGuidance: 1,
+        language: 'english'
+      });
+
       const response = await fetch(
         `${this.baseUrl}/tts/stream`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'X-User-ID': this.userId,
+            'AUTHORIZATION': this.apiKey,
+            'X-USER-ID': this.userId,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
+            model: 'Play3.0-mini',
             text: request.text,
             voice: this.voiceId,
             quality: this.quality,
             speed: this.speed,
-            output_format: 'mp3_chunk'
+            outputFormat: 'mp3',
+            sampleRate: 24000,
+            textGuidance: 1,
+            language: 'english'
           }),
         }
       );
 
-      if (!response.ok || !response.body) {
-        throw new Error('Failed to get stream from PlayHT API');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('PlayHT API Error Details:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText
+        });
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(`PlayHT API error: ${JSON.stringify(errorJson)}`);
+        } catch {
+          throw new Error(`PlayHT API error: ${errorText}`);
+        }
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
       }
 
       const reader = response.body.getReader();
@@ -161,26 +223,26 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
               this.push(Buffer.from(value));
               chunkIndex++;
             } catch (error) {
+              console.error('Chunk Processing Error:', error);
               self.emit(TTSEvents.ERROR, error);
               this.destroy(error instanceof Error ? error : new Error(String(error)));
             }
           };
 
           processChunk().catch((error) => {
+            console.error('Stream Processing Error:', error);
             self.emit(TTSEvents.ERROR, error);
             this.destroy(error instanceof Error ? error : new Error(String(error)));
           });
         }
       });
 
-      // Setup cleanup function
       const cleanup = () => {
         isDestroyed = true;
         reader.cancel().catch(console.error);
         stream.destroy();
       };
 
-      // Handle stream completion
       stream.on('end', cleanup);
       stream.on('error', cleanup);
 
@@ -190,6 +252,10 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
       };
 
     } catch (error) {
+      console.error('PlayHT Stream Error:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       this.emit(TTSEvents.ERROR, error as Error);
       throw error;
     }
@@ -204,8 +270,8 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
         `${this.baseUrl}/tts/${transcriptionId}`,
         {
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'X-User-ID': this.userId,
+            'AUTHORIZATION': this.apiKey,
+            'X-USER-ID': this.userId,
           },
         }
       );
@@ -222,7 +288,6 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
         throw new Error('Audio generation failed');
       }
 
-      // Wait before next attempt
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
