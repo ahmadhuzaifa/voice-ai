@@ -120,7 +120,11 @@ export class DeepgramSTT extends EventEmitter implements STTProvider {
       callback_method: config.callbackMethod,
     };
 
-    this.dgConnection = deepgram.listen.live(dgOptions);
+    const options = Object.fromEntries(
+      Object.entries(dgOptions).filter(([_, value]) => value !== undefined)
+    );
+
+    this.dgConnection = deepgram.listen.live(options);
 
     this.dgConnection.on(LiveTranscriptionEvents.Open, () => {
       this.emit(STTEvents.OPEN);
