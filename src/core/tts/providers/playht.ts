@@ -4,6 +4,18 @@ import { TTSRequest, TTSResponse, TTSConfig, TTSStreamResponse } from '@/types/t
 import { TTSEvents } from '@/constants/TTSEvents';
 import { Readable } from 'stream';
 
+type Language = 
+  | 'afrikaans' | 'albanian' | 'amharic' | 'arabic' | 'bengali' | 'bulgarian' 
+  | 'catalan' | 'croatian' | 'czech' | 'danish' | 'dutch' | 'english' | 'french'
+  | 'galician' | 'german' | 'greek' | 'hebrew' | 'hindi' | 'hungarian' | 'indonesian'
+  | 'italian' | 'japanese' | 'korean' | 'malay' | 'mandarin' | 'polish' | 'portuguese'
+  | 'russian' | 'serbian' | 'spanish' | 'swedish' | 'tagalog' | 'thai' | 'turkish'
+  | 'ukrainian' | 'urdu' | 'xhosa';
+
+type AudioEncoding = 'mp3' | 'mulaw' | 'raw' | 'wav' | 'ogg' | 'flac';
+type PlayHTModel = 'Play3.0-mini';
+type Quality = 'draft' | 'low' | 'medium' | 'high' | 'premium';
+
 export interface PlayHTConfig extends TTSConfig {
   /** API Key for PlayHT */
   apiKey: string;
@@ -12,13 +24,27 @@ export interface PlayHTConfig extends TTSConfig {
   /** Voice ID for PlayHT */
   voiceId: string;
   /** Optional quality setting */
-  quality?: 'draft' | 'low' | 'medium' | 'high' | 'premium';
+  quality?: Quality;
   /** Optional voice speed (0.1 to 5.0) */
   speed?: number;
   /** Optional output format */
   encoding?: AudioEncoding;
-  /** Optional text guidance value */
+  /** Optional sample rate (8000-48000 Hz) */
+  sampleRate?: number;
+  /** Optional seed for reproducible audio generation */
+  seed?: number;
+  /** Optional temperature (0-2) for voice variance */
+  temperature?: number;
+  /** Optional voice guidance (1-6) for voice uniqueness */
+  voiceGuidance?: number;
+  /** Optional style guidance (1-30) for emotional intensity */
+  styleGuidance?: number;
+  /** Optional text guidance (1-2) for text adherence */
   textGuidance?: number;
+  /** Optional language setting */
+  language?: Language;
+  /** Optional model selection */
+  model?: PlayHTModel;
 }
 
 interface PlayHTStatusResponse {
@@ -30,18 +56,23 @@ interface PlayHTConversionResponse {
   id: string;
 }
 
-type AudioEncoding = 'mp3' | 'mulaw' | 'raw' | 'wav' | 'ogg' | 'flac';
-
 export class PlayHTTTS extends EventEmitter implements TTSProvider {
   private readonly apiKey: string;
   private readonly userId: string;
   private readonly baseUrl = 'https://api.play.ai/api/v1';
   private readonly voiceId: string;
-  private readonly quality: string;
+  private readonly quality: Quality;
   private readonly speed: number;
   private readonly encoding: AudioEncoding;
   private readonly sampleRate: number;
+  private readonly seed?: number;
+  private readonly temperature?: number;
+  private readonly voiceGuidance?: number;
+  private readonly styleGuidance?: number;
   private readonly textGuidance: number;
+  private readonly language: Language;
+  private readonly model: PlayHTModel;
+
   constructor(config: PlayHTConfig) {
     super();
     
@@ -60,11 +91,37 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
     this.speed = config.speed ?? 1.0;
     this.encoding = config.encoding ?? 'mp3';
     this.sampleRate = config.sampleRate ?? 24000;
+    this.seed = config.seed;
+    this.temperature = config.temperature;
+    this.voiceGuidance = config.voiceGuidance;
+    this.styleGuidance = config.styleGuidance;
     this.textGuidance = config.textGuidance ?? 1;
-    
-    // Validate speed range
+    this.language = config.language ?? 'english';
+    this.model = config.model ?? 'Play3.0-mini';
+
+    // Validate configurations
     if (this.speed < 0.1 || this.speed > 5.0) {
       throw new Error('Speed must be between 0.1 and 5.0');
+    }
+
+    if (this.sampleRate && (this.sampleRate < 8000 || this.sampleRate > 48000)) {
+      throw new Error('Sample rate must be between 8000 and 48000 Hz');
+    }
+
+    if (this.temperature && (this.temperature < 0 || this.temperature > 2)) {
+      throw new Error('Temperature must be between 0 and 2');
+    }
+
+    if (this.voiceGuidance && (this.voiceGuidance < 1 || this.voiceGuidance > 6)) {
+      throw new Error('Voice guidance must be between 1 and 6');
+    }
+
+    if (this.styleGuidance && (this.styleGuidance < 1 || this.styleGuidance > 30)) {
+      throw new Error('Style guidance must be between 1 and 30');
+    }
+
+    if (this.textGuidance && (this.textGuidance < 1 || this.textGuidance > 2)) {
+      throw new Error('Text guidance must be between 1 and 2');
     }
   }
 
@@ -84,17 +141,7 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
             'X-USER-ID': this.userId,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            model: 'Play3.0-mini',
-            text: request.text,
-            voice: this.voiceId,
-            quality: this.quality,
-            speed: this.speed,
-            outputFormat: this.encoding,
-            sampleRate: this.sampleRate,
-            textGuidance: 1,
-            language: 'english'
-          }),
+          body: JSON.stringify(this.getRequestBody(request.text)),
         }
       );
 
@@ -155,18 +202,6 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
         throw new Error('Text is required for TTS generation');
       }
 
-      console.log('PlayHT Request:', {
-        model: 'Play3.0-mini',
-        text: request.text,
-        voice: this.voiceId,
-        quality: this.quality,
-        speed: this.speed,
-        outputFormat: 'mp3',
-        sampleRate: 24000,
-        textGuidance: 1,
-        language: 'english'
-      });
-
       const response = await fetch(
         `${this.baseUrl}/tts/stream`,
         {
@@ -176,17 +211,7 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
             'X-USER-ID': this.userId,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            model: 'Play3.0-mini',
-            text: request.text,
-            voice: this.voiceId,
-            quality: this.quality,
-            speed: this.speed,
-            outputFormat: this.encoding,
-            sampleRate: this.sampleRate,
-            textGuidance: this.textGuidance,
-            language: 'english'
-          }),
+          body: JSON.stringify(this.getRequestBody(request.text)),
         }
       );
 
@@ -303,5 +328,23 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
     }
 
     throw new Error('Timeout waiting for audio generation');
+  }
+
+  private getRequestBody(text: string) {
+    return {
+      model: this.model,
+      text,
+      voice: this.voiceId,
+      quality: this.quality,
+      outputFormat: this.encoding,
+      speed: this.speed,
+      sampleRate: this.sampleRate,
+      seed: this.seed,
+      temperature: this.temperature,
+      voiceGuidance: this.voiceGuidance,
+      styleGuidance: this.styleGuidance,
+      textGuidance: this.textGuidance,
+      language: this.language
+    };
   }
 }
