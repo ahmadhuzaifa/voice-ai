@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { createClient, ListenLiveClient, LiveTranscriptionEvent, LiveSchema, LiveTranscriptionEvents, UtteranceEndEvent, SpeechStartedEvent } from '@deepgram/sdk';
 import { Buffer } from 'node:buffer';
 import { STTProvider } from '@/core/stt/stt.interface';
-import { SpeechStartedResult, STTConfig, TranscriptionResult, UtteranceEndResult } from '@/types/stt';
+import { SpeechStartedResult, STTConfig, TranscriptionOptions, TranscriptionResult, UtteranceEndResult } from '@/types/stt';
 import { STTEvents } from '@/constants/STTEvents';
 
 type DiarizeVersion = string;
@@ -73,30 +73,6 @@ export interface DeepgramSTTConfig extends STTConfig {
   extra?: string;
   /** Deterministic processing seed */
   seed?: number;
-}
-
-interface AudioConfig {
-  /** Sample rate in Hz */
-  sampleRate: number;
-  /** Number of audio channels */
-  channels: number;
-  /** Audio encoding format */
-  encoding: string;
-}
-
-export interface TranscriptionOptions {
-  /** Audio configuration */
-  audio: AudioConfig;
-  /** Enable punctuation */
-  punctuate?: boolean;
-  /** Enable interim results */
-  interimResults?: boolean;
-  /** Endpointing timeout in ms */
-  endpointing?: number;
-  /** Utterance end timeout in ms */
-  utteranceEndMs?: number;
-  /** Enable VAD events */
-  vadEvents?: boolean;
 }
 
 export class DeepgramSTT extends EventEmitter implements STTProvider {

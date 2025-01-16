@@ -16,6 +16,8 @@ export interface AudioConfig {
   encoding: string;
   /** Sample rate in Hz */
   sampleRate: number;
+  /** Number of channels */
+  channels?: number;
 }
 
 /**
@@ -24,14 +26,16 @@ export interface AudioConfig {
 export interface TranscriptionOptions {
   /** Audio configuration */
   audio: AudioConfig;
-  /** Whether to include punctuation */
+  /** Enable punctuation */
   punctuate?: boolean;
-  /** Whether to return interim results */
+  /** Enable interim results */
   interimResults?: boolean;
-  /** Endpointing duration in milliseconds */
+  /** Endpointing timeout in ms */
   endpointing?: number;
-  /** Utterance end time in milliseconds */
+  /** Utterance end timeout in ms */
   utteranceEndMs?: number;
+  /** Enable VAD events */
+  vadEvents?: boolean;
   /** Language model to use */
   model?: string;
 }
