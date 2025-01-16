@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { createClient, ListenLiveClient, LiveTranscriptionEvent, LiveSchema, LiveTranscriptionEvents, UtteranceEndEvent, SpeechStartedEvent } from '@deepgram/sdk';
 import { Buffer } from 'node:buffer';
 import { STTProvider } from '@/core/stt/stt.interface';
-import { SpeechStartedResult, STTConfig, TranscriptionOptions, TranscriptionResult, UtteranceEndResult } from '@/types/stt';
+import { SpeechStartedResult, STTConfig, TranscriptionResult, UtteranceEndResult } from '@/types/stt';
 import { STTEvents } from '@/constants/STTEvents';
 
 type DiarizeVersion = string;
@@ -78,15 +78,15 @@ export interface DeepgramSTTConfig extends STTConfig {
 export class DeepgramSTT extends EventEmitter implements STTProvider {
   private dgConnection: ListenLiveClient;
 
-  constructor(config: DeepgramSTTConfig, options: TranscriptionOptions) {
+  constructor(config: DeepgramSTTConfig) {
     super();
     const deepgram = createClient(config.apiKey);
 
     const dgOptions: LiveSchema = {
       // Audio settings
-      encoding: options.audio.encoding,
-      sample_rate: options.audio.sampleRate,
-      channels: options.audio.channels,
+      encoding: config.audio.encoding,
+      sample_rate: config.audio.sampleRate,
+      channels: config.audio.channels,
       multichannel: config.multichannel,
 
       // Model and language
@@ -94,7 +94,7 @@ export class DeepgramSTT extends EventEmitter implements STTProvider {
       language: config.language,
       
       // Formatting options
-      punctuate: options.punctuate ?? true,
+      punctuate: config.punctuate ?? true,
       smart_format: config.smartFormat ?? true,
       diarize: config.diarize,
       diarize_version: config.diarizeVersion,
@@ -108,10 +108,10 @@ export class DeepgramSTT extends EventEmitter implements STTProvider {
       keywords: config.keywords?.join(','),
 
       // Processing options
-      interim_results: options.interimResults ?? true,
-      endpointing: options.endpointing ?? 200,
-      utterance_end_ms: options.utteranceEndMs ?? 1000,
-      vad_events: options.vadEvents ?? true,
+      interim_results: config.interimResults ?? true,
+      endpointing: config.endpointing ?? 200,
+      utterance_end_ms: config.utteranceEndMs ?? 1000,
+      vad_events: config.vadEvents ?? true,
 
       // Additional options
       tag: config.tag,

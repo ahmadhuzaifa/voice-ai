@@ -1,14 +1,4 @@
 /**
- * Configuration options for STT providers
- */
-export interface STTConfig {
-  /** API key for the service */
-  apiKey: string;
-  /** Additional provider-specific configuration */
-  [key: string]: any;
-}
-
-/**
  * Base configuration for audio input
  */
 export interface AudioConfig {
@@ -21,9 +11,11 @@ export interface AudioConfig {
 }
 
 /**
- * Options for real-time transcription
+ * Configuration options for STT providers
  */
-export interface TranscriptionOptions {
+export interface STTConfig {
+  /** API key for the service */
+  apiKey: string;
   /** Audio configuration */
   audio: AudioConfig;
   /** Enable punctuation */
