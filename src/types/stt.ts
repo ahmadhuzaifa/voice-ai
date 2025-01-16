@@ -46,6 +46,15 @@ export interface Word {
   start: number;
 }
 
+export interface Metadata {
+  /** Request ID */
+  requestId?: string;
+  /** Model Version */
+  modelVersion?: string;
+  /** Created */
+  created?: string;
+}
+
 /**
  * Transcription result containing the transcribed text and metadata
  */
@@ -64,6 +73,8 @@ export interface TranscriptionResult {
   duration?: number;
   /** Words in the transcription */
   words?: Word[];
+  /** Metadata */
+  metadata?: Metadata;
 }
 
 
@@ -75,6 +86,8 @@ export interface UtteranceEndResult {
 }
 
 export interface SpeechStartedResult {
+  /** Timestamp */
+  timestamp: number;
   /** Channel */
   channel: number[];
 }

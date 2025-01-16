@@ -20,8 +20,22 @@ type ElevenLabsOutputFormat =
 type AudioEncoding = 'mp3' | 'pcm' | 'ulaw';
 type SampleRate = 8000 | 16000 | 22050 | 24000 | 44100;
 type BitRate = 32 | 64 | 96 | 128 | 192;
+type TextNormalization = 'auto' | 'on' | 'off';
+type StreamingLatency = 0 | 1 | 2 | 3 | 4;
+
+interface VoiceSettings {
+  stability: number;
+  similarity_boost: number;
+}
+
+interface PronunciationDictionaryLocator {
+  id: string;
+  version_id?: string;
+}
 
 export interface ElevenLabsConfig extends TTSConfig {
+  /** API Key for ElevenLabs */
+  apiKey: string;
   /** Voice ID for ElevenLabs */
   voiceId: string;
   /** Optional model ID for ElevenLabs (default: eleven_monolingual_v1) */
@@ -36,6 +50,28 @@ export interface ElevenLabsConfig extends TTSConfig {
   sampleRate?: SampleRate;
   /** Bit rate for MP3 encoding */
   bitRate?: BitRate;
+  /** Optional language code (ISO 639-1) */
+  languageCode?: string;
+  /** Optional text normalization setting */
+  textNormalization?: TextNormalization;
+  /** Optional streaming latency optimization level (0-4) */
+  streamingLatency?: StreamingLatency;
+  /** Optional seed for deterministic generation (0-4294967295) */
+  seed?: number;
+  /** Optional enable/disable logging */
+  enableLogging?: boolean;
+  /** Optional list of pronunciation dictionary locators */
+  pronunciationDictionaries?: PronunciationDictionaryLocator[];
+}
+
+interface RequestOptions {
+  text: string;
+  model_id: string;
+  voice_settings?: VoiceSettings;
+  language_code?: string;
+  pronunciation_dictionary_locators?: PronunciationDictionaryLocator[];
+  seed?: number;
+  apply_text_normalization?: TextNormalization;
 }
 
 export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
@@ -48,6 +84,12 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
   private readonly encoding: AudioEncoding;
   private readonly sampleRate: SampleRate;
   private readonly bitRate: BitRate;
+  private readonly languageCode?: string;
+  private readonly textNormalization: TextNormalization;
+  private readonly streamingLatency: StreamingLatency;
+  private readonly seed?: number;
+  private readonly enableLogging: boolean;
+  private readonly pronunciationDictionaries?: PronunciationDictionaryLocator[];
 
   constructor(config: ElevenLabsConfig) {
     super();
@@ -56,14 +98,41 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
       throw new Error('ElevenLabs API key is required');
     }
 
+    if (!config.voiceId) {
+      throw new Error('Voice ID is required');
+    }
+
     this.apiKey = config.apiKey;
     this.modelId = config.modelId ?? 'eleven_monolingual_v1';
-    this.voiceId = config.voiceId ?? 'premade/adam';
+    this.voiceId = config.voiceId;
     this.stability = config.stability ?? 0.5;
     this.similarityBoost = config.similarityBoost ?? 0.75;
-    this.encoding = config.encoding ?? 'pcm';
-    this.sampleRate = config.sampleRate ?? 16000;
-    this.bitRate = config.bitRate ?? 32;
+    this.encoding = config.encoding ?? 'mp3';
+    this.sampleRate = config.sampleRate ?? 44100;
+    this.bitRate = config.bitRate ?? 128;
+    this.languageCode = config.languageCode;
+    this.textNormalization = config.textNormalization ?? 'auto';
+    this.streamingLatency = config.streamingLatency ?? 0;
+    this.seed = config.seed;
+    this.enableLogging = config.enableLogging ?? true;
+    this.pronunciationDictionaries = config.pronunciationDictionaries;
+
+    // Validate configurations
+    if (this.stability < 0 || this.stability > 1) {
+      throw new Error('Stability must be between 0 and 1');
+    }
+
+    if (this.similarityBoost < 0 || this.similarityBoost > 1) {
+      throw new Error('Similarity boost must be between 0 and 1');
+    }
+
+    if (this.seed !== undefined && (this.seed < 0 || this.seed > 4294967295)) {
+      throw new Error('Seed must be between 0 and 4294967295');
+    }
+
+    if (this.pronunciationDictionaries && this.pronunciationDictionaries.length > 3) {
+      throw new Error('Maximum of 3 pronunciation dictionaries allowed');
+    }
   }
 
   private determineOutputFormat(): ElevenLabsOutputFormat {
@@ -78,10 +147,10 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
           case 96: return 'mp3_44100_96';
           case 128: return 'mp3_44100_128';
           case 192: return 'mp3_44100_192';
-          default: return 'mp3_44100_64';
+          default: return 'mp3_44100_128';
         }
       }
-      return 'mp3_44100_64';
+      return 'mp3_44100_128';
     }
 
     if (this.encoding === 'pcm') {
@@ -90,7 +159,7 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
         case 22050: return 'pcm_22050';
         case 24000: return 'pcm_24000';
         case 44100: return 'pcm_44100';
-        default: return 'pcm_16000'; 
+        default: return 'pcm_24000';
       }
     }
 
@@ -101,10 +170,47 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
     throw new Error(`Unsupported encoding: ${this.encoding}`);
   }
 
+  private getRequestOptions(text: string): RequestOptions {
+    const options: RequestOptions = {
+      text,
+      model_id: this.modelId,
+      voice_settings: {
+        stability: this.stability,
+        similarity_boost: this.similarityBoost
+      }
+    };
+
+    if (this.languageCode) {
+      options.language_code = this.languageCode;
+    }
+
+    if (this.pronunciationDictionaries) {
+      options.pronunciation_dictionary_locators = this.pronunciationDictionaries;
+    }
+
+    if (this.seed !== undefined) {
+      options.seed = this.seed;
+    }
+
+    if (this.textNormalization !== 'auto') {
+      options.apply_text_normalization = this.textNormalization;
+    }
+
+    return options;
+  }
+
   async generate(request: TTSRequest): Promise<TTSResponse> {
     try {
+      if (!request.text) {
+        throw new Error('Text is required for TTS generation');
+      }
+
       const url = new URL(`${this.baseUrl}/text-to-speech/${this.voiceId}`);
       url.searchParams.append('output_format', this.determineOutputFormat());
+
+      if (this.enableLogging === false) {
+        url.searchParams.append('enable_logging', 'false');
+      }
 
       const response = await fetch(url, {
         method: 'POST',
@@ -112,19 +218,13 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
           'xi-api-key': this.apiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: request.text,
-          model_id: this.modelId,
-          voice_settings: {
-            stability: this.stability,
-            similarity_boost: this.similarityBoost,
-          },
-        }),
+        body: JSON.stringify(this.getRequestOptions(request.text)),
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(`ElevenLabs API error: ${error || response.statusText}`);
+        const error = await response.json().catch(() => ({ error: 'Unknown error' })) as { detail?: string; message?: string };
+        console.log('ElevenLabs API error:', error);
+        throw new Error(`ElevenLabs API error: ${error.detail || error.message || response.statusText}`);
       }
 
       const audioBuffer = await response.arrayBuffer();
@@ -154,9 +254,20 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
 
   async generateStream(request: TTSRequest): Promise<TTSStreamResponse> {
     try {
+      if (!request.text) {
+        throw new Error('Text is required for TTS generation');
+      }
+
       const url = new URL(`${this.baseUrl}/text-to-speech/${this.voiceId}/stream`);
       url.searchParams.append('output_format', this.determineOutputFormat());
-      url.searchParams.append('optimize_streaming_latency', '3');
+      
+      if (this.streamingLatency > 0) {
+        url.searchParams.append('optimize_streaming_latency', this.streamingLatency.toString());
+      }
+
+      if (this.enableLogging === false) {
+        url.searchParams.append('enable_logging', 'false');
+      }
 
       const response = await fetch(url, {
         method: 'POST',
@@ -164,26 +275,21 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
           'xi-api-key': this.apiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: request.text,
-          model_id: this.modelId,
-          voice_settings: {
-            stability: this.stability,
-            similarity_boost: this.similarityBoost,
-          },
-        }),
+        body: JSON.stringify(this.getRequestOptions(request.text)),
       });
 
       if (!response.ok || !response.body) {
-        throw new Error('Failed to get stream from ElevenLabs API');
+        const errorText = await response.text();
+        throw new Error(`Failed to get stream from ElevenLabs API: ${errorText}`);
       }
 
       const reader = response.body.getReader();
       let chunkIndex = 0;
       let isDestroyed = false;
+      const self = this;
 
       const stream = new Readable({
-        async read(): Promise<void> {
+        async read() {
           try {
             if (isDestroyed) {
               this.push(null);
@@ -200,7 +306,8 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
             this.push(Buffer.from(value));
             chunkIndex++;
           } catch (error) {
-            this.emit(TTSEvents.ERROR, error);
+            console.error('Stream Processing Error:', error);
+            self.emit(TTSEvents.ERROR, error);
             this.destroy(error instanceof Error ? error : new Error(String(error)));
           }
         }
@@ -221,6 +328,7 @@ export class ElevenLabsTTS extends EventEmitter implements TTSProvider {
       };
 
     } catch (error) {
+      console.error('ElevenLabs Stream Error:', error);
       this.emit(TTSEvents.ERROR, error as Error);
       throw error;
     }
