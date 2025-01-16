@@ -15,6 +15,10 @@ export interface PlayHTConfig extends TTSConfig {
   quality?: 'draft' | 'low' | 'medium' | 'high' | 'premium';
   /** Optional voice speed (0.1 to 5.0) */
   speed?: number;
+  /** Optional output format */
+  encoding?: AudioEncoding;
+  /** Optional text guidance value */
+  textGuidance?: number;
 }
 
 interface PlayHTStatusResponse {
@@ -26,6 +30,8 @@ interface PlayHTConversionResponse {
   id: string;
 }
 
+type AudioEncoding = 'mp3' | 'mulaw' | 'raw' | 'wav' | 'ogg' | 'flac';
+
 export class PlayHTTTS extends EventEmitter implements TTSProvider {
   private readonly apiKey: string;
   private readonly userId: string;
@@ -33,7 +39,9 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
   private readonly voiceId: string;
   private readonly quality: string;
   private readonly speed: number;
-
+  private readonly encoding: AudioEncoding;
+  private readonly sampleRate: number;
+  private readonly textGuidance: number;
   constructor(config: PlayHTConfig) {
     super();
     
@@ -50,7 +58,10 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
     this.voiceId = config.voiceId;
     this.quality = config.quality ?? 'premium';
     this.speed = config.speed ?? 1.0;
-
+    this.encoding = config.encoding ?? 'mp3';
+    this.sampleRate = config.sampleRate ?? 24000;
+    this.textGuidance = config.textGuidance ?? 1;
+    
     // Validate speed range
     if (this.speed < 0.1 || this.speed > 5.0) {
       throw new Error('Speed must be between 0.1 and 5.0');
@@ -79,8 +90,8 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
             voice: this.voiceId,
             quality: this.quality,
             speed: this.speed,
-            outputFormat: 'mp3',
-            sampleRate: 24000,
+            outputFormat: this.encoding,
+            sampleRate: this.sampleRate,
             textGuidance: 1,
             language: 'english'
           }),
@@ -171,9 +182,9 @@ export class PlayHTTTS extends EventEmitter implements TTSProvider {
             voice: this.voiceId,
             quality: this.quality,
             speed: this.speed,
-            outputFormat: 'mp3',
-            sampleRate: 24000,
-            textGuidance: 1,
+            outputFormat: this.encoding,
+            sampleRate: this.sampleRate,
+            textGuidance: this.textGuidance,
             language: 'english'
           }),
         }
