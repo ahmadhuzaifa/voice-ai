@@ -40,6 +40,14 @@ export interface Word {
   word: string;
   /** Start time of the word */
   start: number;
+  /** End time of the word */
+  end: number;
+  /** Confidence score (0-1) */
+  confidence: number;
+  /** Punctuated word */
+  punctuatedWord: string;
+  /** Speaker */
+  speaker?: number;
 }
 
 export interface Metadata {
