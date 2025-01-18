@@ -90,28 +90,28 @@ export class DeepgramSTT extends EventEmitter implements STTProvider {
       multichannel: config.multichannel,
 
       // Model and language
-      model: config.model ?? 'nova-2',
+      model: config.model,
       language: config.language,
       
       // Formatting options
-      punctuate: config.punctuate ?? true,
-      smart_format: config.smartFormat ?? true,
+      punctuate: config.punctuate,
+      smart_format: config.smartFormat,
       diarize: config.diarize,
       diarize_version: config.diarizeVersion,
       dictation: config.dictation,
       filler_words: config.fillerWords,
       numerals: config.numerals,
       profanity_filter: config.profanityFilter,
-      redact: config.redact?.join(','),
-      replace: JSON.stringify(config.replace),
-      search: config.search?.join(','),
-      keywords: config.keywords?.join(','),
+      redact: config.redact ? config.redact.join(',') : undefined,
+      replace: config.replace ? JSON.stringify(config.replace) : undefined,
+      search: config.search ? config.search.join(',') : undefined,
+      keywords: config.keywords ? config.keywords.join(',') : undefined,
 
       // Processing options
-      interim_results: config.interimResults ?? true,
-      endpointing: config.endpointing ?? 200,
-      utterance_end_ms: config.utteranceEndMs ?? 1000,
-      vad_events: config.vadEvents ?? true,
+      interim_results: config.interimResults,
+      endpointing: config.endpointing,
+      utterance_end_ms: config.utteranceEndMs,
+      vad_events: config.vadEvents,
 
       // Additional options
       tag: config.tag,
